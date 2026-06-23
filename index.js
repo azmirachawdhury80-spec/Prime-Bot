@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const SERVER_URL = process.env.SERVER_URL; 
 
 app.use(express.json());
-app.get('/', (req, res) => res.send('Premium Fire OTP Bot - Ultra Fast V31 (Support Update & UI Shuffled) Running!'));
+app.get('/', (req, res) => res.send('Premium Fire OTP Bot - Ultra Fast V32 (Group/Channel Manage Fixed) Running!'));
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // --- MongoDB Setup ---
@@ -71,13 +71,13 @@ const Withdraw = mongoose.model('Withdraw', WithdrawSchema);
 
 // --- কনফিগারেশন ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const MAIN_ADMIN_ID = parseInt(process.env.MAIN_ADMIN_ID);
-const SUB_ADMIN_ID = parseInt(process.env.SUB_ADMIN_ID);
+const MAIN_ADMIN_ID = String(process.env.MAIN_ADMIN_ID || "");
+const SUB_ADMIN_ID = String(process.env.SUB_ADMIN_ID || "");
 const NUMBER_EXPIRY_MS = 15 * 60 * 1000; 
 const BASE_OTP_REVENUE = 0.40; 
 
-function isAdmin(id) { return id === MAIN_ADMIN_ID || id === SUB_ADMIN_ID; }
-function isMainAdmin(id) { return id === MAIN_ADMIN_ID; }
+function isAdmin(id) { return String(id) === MAIN_ADMIN_ID || String(id) === SUB_ADMIN_ID; }
+function isMainAdmin(id) { return String(id) === MAIN_ADMIN_ID; }
 
 let bot;
 if (SERVER_URL) {
@@ -177,8 +177,8 @@ async function getAppConfig() {
         if (config.bonus_top3 === undefined) config.bonus_top3 = 20;
         if (config.otp_group === undefined) config.otp_group = "@otp_number_grp";
         if (config.payment_group === undefined) config.payment_group = "-1003925192534";
-        if (config.force_channels === undefined) config.force_channels = []; 
-        if (config.support_user === undefined) config.support_user = "developer_walid"; // Dynamic Support User
+        if (!Array.isArray(config.force_channels)) config.force_channels = []; // Strict Array Check
+        if (config.support_user === undefined) config.support_user = "developer_walid";
         return config;
     } catch(e) { 
         return { per_otp_rate: 0.20, min_withdraw: 50, pay_methods: ['Binance', 'Bkash', 'Nagad'], reward_system: true, stexsms_on: true, voltxsms_on: true, force_start: false, global_feed_on: true, ref_otp_commission: 0.05, bonus_top1: 50, bonus_top2: 30, bonus_top3: 20, otp_group: "@otp_number_grp", payment_group: "-1003925192534", force_channels: [], support_user: "developer_walid" }; 
@@ -277,7 +277,7 @@ function getAdminMenu(chatId) {
     ];
     
     // Sub Admin only
-    if (chatId === SUB_ADMIN_ID) {
+    if (String(chatId) === SUB_ADMIN_ID) {
         kb.push([{ text: "💰 Sub Admin Balance", callback_data: "adm_sub_balance", style: "danger" }]);
     }
     
@@ -309,7 +309,7 @@ function detectLang(text) {
 async function checkForceSub(chatId) {
     if (isAdmin(chatId)) return true;
     const config = await getAppConfig();
-    const channels = config.force_channels || [];
+    const channels = Array.isArray(config.force_channels) ? config.force_channels : [];
     if (channels.length === 0) return true;
 
     let isSubscribed = true;
@@ -654,8 +654,9 @@ bot.on('message', async (msg) => {
     const u = await ensureUser(msg.from);
     if (u && u.banned) return bot.sendMessage(chatId, "🚫 *You are banned.*", { parse_mode: 'Markdown' });
 
+    // 🟢 Strict menu checking fix to prevent accidental state deletion
     const menuButtons = ["📱 GET NUMBER", "📡 LIVE RANGE", "🏆 Top Users", "🎁 Referrals", "👤 ACCOUNT", "🎧 SUPPORT", "🛠️ ADMIN PANEL"];
-    if (menuButtons.some(btn => text.includes(btn))) {
+    if (menuButtons.includes(text)) {
         if(adminState[chatId]) delete adminState[chatId];
         if(userState[chatId]) delete userState[chatId];
     }
@@ -801,6 +802,7 @@ bot.on('message', async (msg) => {
         else if (state.action === 'wait_force_ch_add' && isMainAdmin(chatId)) {
             const ch = text.trim();
             const config = await getAppConfig();
+            if (!Array.isArray(config.force_channels)) config.force_channels = [];
             if (!config.force_channels.includes(ch)) { config.force_channels.push(ch); await saveAppConfig(config); }
             bot.sendMessage(chatId, `✅ *Force Channel/Group added:* ${ch}`, { parse_mode: 'Markdown' });
             delete adminState[chatId]; return;
@@ -926,7 +928,8 @@ bot.on('callback_query', async (query) => {
         // 🟢 Groups & Force Channels Management (Main Admin Only)
         else if (data === "adm_groups" && isMainAdmin(chatId)) {
             const config = await getAppConfig();
-            bot.editMessageText(`🔗 *Manage Groups & Channels*\n\n*OTP Group:* ${config.otp_group}\n*Pay Group:* ${config.payment_group}\n*Support:* @${config.support_user}\n*Force Channels:* ${config.force_channels.length}`, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
+            const fChannels = Array.isArray(config.force_channels) ? config.force_channels : [];
+            bot.editMessageText(`🔗 *Manage Groups & Channels*\n\n*OTP Group:* ${config.otp_group}\n*Pay Group:* ${config.payment_group}\n*Support:* @${config.support_user}\n*Force Channels:* ${fChannels.length}`, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
                 [{ text: "📢 Manage Force Channels", callback_data: "adm_force_list", style: "primary" }],
                 [{ text: "✏️ Set OTP Group", callback_data: "set_otp_grp", style: "danger" }, { text: "✏️ Set Payment Group", callback_data: "set_pay_grp", style: "success" }],
                 [{ text: "👨‍💻 Set Support Username", callback_data: "set_support_usr", style: "primary" }],
@@ -936,7 +939,8 @@ bot.on('callback_query', async (query) => {
         else if (data === "adm_force_list" && isMainAdmin(chatId)) {
             const config = await getAppConfig();
             let kb = [];
-            config.force_channels.forEach((ch, idx) => { kb.push([{ text: `🗑️ Remove: ${ch}`, callback_data: `del_force_${idx}`, style: "danger" }]); });
+            const fChannels = Array.isArray(config.force_channels) ? config.force_channels : [];
+            fChannels.forEach((ch, idx) => { kb.push([{ text: `🗑️ Remove: ${ch}`, callback_data: `del_force_${idx}`, style: "danger" }]); });
             kb.push([{ text: "➕ Add Force Channel", callback_data: "add_force_ch", style: "success" }]);
             kb.push([{ text: "🔙 Back", callback_data: "adm_groups", style: "primary" }]);
             bot.editMessageText("📢 *Manage Force Channels*", { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb }}).catch(()=>{});
@@ -948,6 +952,7 @@ bot.on('callback_query', async (query) => {
         else if (data.startsWith('del_force_') && isMainAdmin(chatId)) {
             const idx = parseInt(data.split('_')[2]);
             const config = await getAppConfig();
+            if (!Array.isArray(config.force_channels)) config.force_channels = [];
             config.force_channels.splice(idx, 1);
             await saveAppConfig(config);
             bot.editMessageText(`✅ Channel Removed!`, { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "adm_force_list", style: "danger" }]] } }).catch(()=>{});
@@ -963,20 +968,20 @@ bot.on('callback_query', async (query) => {
         }
         
         // 🟢 Sub Admin Balance Logic
-        else if (data === "adm_sub_balance" && chatId === SUB_ADMIN_ID) {
+        else if (data === "adm_sub_balance" && String(chatId) === SUB_ADMIN_ID) {
             const subDoc = await User.findOne({ id: String(SUB_ADMIN_ID) });
             bot.editMessageText(`💰 *Sub Admin Profit Balance*\n\n💵 *Total Balance:* \`${parseFloat((subDoc.sub_admin_balance||0).toFixed(2))}\` ৳\n\n_Note: You earn a profit margin on every successful OTP._`, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
                 [{ text: "💸 Withdraw Profit", callback_data: "sub_wd_start", style: "success" }],
                 [{ text: "🔙 Back", callback_data: "admin_main", style: "danger" }]
             ]}}).catch(()=>{});
         }
-        else if (data === "sub_wd_start" && chatId === SUB_ADMIN_ID) {
+        else if (data === "sub_wd_start" && String(chatId) === SUB_ADMIN_ID) {
             const config = await getAppConfig();
             let inlineKeyboard = [];
             config.pay_methods.forEach(m => { inlineKeyboard.push([{ text: `💳 ${m}`, callback_data: `subwd_m_${m}`, style: "primary" }]); });
             bot.sendMessage(chatId, "📌 *Select Withdrawal Method for Profit:*", { parse_mode: 'Markdown', reply_markup: { inline_keyboard: inlineKeyboard } });
         }
-        else if (data.startsWith('subwd_m_') && chatId === SUB_ADMIN_ID) {
+        else if (data.startsWith('subwd_m_') && String(chatId) === SUB_ADMIN_ID) {
             const method = data.split('subwd_m_')[1];
             userState[chatId] = { action: 'wait_wd_id', method: method, is_sub_admin: true };
             bot.sendMessage(chatId, `✏️ *আপনার ${method} Account ID / Number দিন:*`, { parse_mode: 'Markdown' });
