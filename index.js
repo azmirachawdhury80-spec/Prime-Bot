@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const SERVER_URL = process.env.SERVER_URL; 
 
 app.use(express.json());
-app.get('/', (req, res) => res.send('Premium Fire OTP Bot - Ultra Fast V33 (Markdown & Button Fix) Running!'));
+app.get('/', (req, res) => res.send('Premium Fire OTP Bot - VX TEAM Edition V35 (ForceSub Fully Fixed) Running!'));
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // --- MongoDB Setup ---
@@ -170,6 +170,7 @@ async function getAppConfig() {
         if (config.min_withdraw === undefined) config.min_withdraw = 50;
         if (config.pay_methods === undefined) config.pay_methods = ['Binance', 'Bkash', 'Nagad'];
         if (config.reward_system === undefined) config.reward_system = true;
+        if (config.top_reward_on === undefined) config.top_reward_on = true; 
         if (config.stexsms_on === undefined) config.stexsms_on = true;     
         if (config.voltxsms_on === undefined) config.voltxsms_on = true;   
         if (config.force_start === undefined) config.force_start = false;  
@@ -184,7 +185,7 @@ async function getAppConfig() {
         if (config.support_user === undefined) config.support_user = "developer_walid";
         return config;
     } catch(e) { 
-        return { per_otp_rate: 0.20, min_withdraw: 50, pay_methods: ['Binance', 'Bkash', 'Nagad'], reward_system: true, stexsms_on: true, voltxsms_on: true, force_start: false, global_feed_on: true, ref_otp_commission: 0.05, bonus_top1: 50, bonus_top2: 30, bonus_top3: 20, otp_group: "@otp_number_grp", payment_group: "-1003925192534", force_channels: [], support_user: "developer_walid" }; 
+        return { per_otp_rate: 0.20, min_withdraw: 50, pay_methods: ['Binance', 'Bkash', 'Nagad'], reward_system: true, top_reward_on: true, stexsms_on: true, voltxsms_on: true, force_start: false, global_feed_on: true, ref_otp_commission: 0.05, bonus_top1: 50, bonus_top2: 30, bonus_top3: 20, otp_group: "@otp_number_grp", payment_group: "-1003925192534", force_channels: [], support_user: "developer_walid" }; 
     }
 }
 async function saveAppConfig(data) { await Setting.findOneAndUpdate({ key: 'app_config' }, { data }, { upsert: true }); }
@@ -296,6 +297,27 @@ function detectLang(text) {
     return 'English';
 }
 
+// 🟢 Subscription Checker Logic (Fixed missing link parser)
+async function isUserSubscribed(chatId) {
+    if (isAdmin(chatId)) return true;
+    const config = await getAppConfig();
+    const channels = Array.isArray(config.force_channels) ? config.force_channels : [];
+    if (channels.length === 0) return true;
+
+    for (let ch of channels) {
+        if (!ch) continue;
+        try {
+            let target = ch;
+            if(ch.includes('t.me/') && !ch.includes('t.me/+')) {
+                target = '@' + ch.split('t.me/')[1].split('/')[0];
+            }
+            const member = await bot.getChatMember(target, chatId);
+            if (member.status === 'left' || member.status === 'kicked') return false;
+        } catch (e) { return false; }
+    }
+    return true;
+}
+
 async function checkForceSub(chatId) {
     if (isAdmin(chatId)) return true;
     const config = await getAppConfig();
@@ -308,7 +330,12 @@ async function checkForceSub(chatId) {
     for (let ch of channels) {
         if (!ch) continue;
         try {
-            const member = await bot.getChatMember(ch, chatId);
+            let target = ch;
+            if(ch.includes('t.me/') && !ch.includes('t.me/+')) {
+                target = '@' + ch.split('t.me/')[1].split('/')[0];
+            }
+            
+            const member = await bot.getChatMember(target, chatId);
             if (member.status === 'left' || member.status === 'kicked') {
                 isSubscribed = false;
                 buttons.push([{ text: `📢 Join Channel`, url: ch.startsWith('http') ? ch : `https://t.me/${ch.replace('@', '')}`, style: "danger" }]);
@@ -566,23 +593,26 @@ setInterval(async () => {
                 await Setting.findOneAndUpdate({ key: 'last_bonus_date' }, { data: todayStr }, { upsert: true });
 
                 const config = await getAppConfig();
-                const topUsers = await User.find({ today_otps: { $gte: 50 }, referral_count: { $gte: 3 } }).sort({ today_otps: -1 }).limit(3);
                 
-                let broadcastTxt = "🏆 *YESTERDAY'S TOP WINNERS* 🏆\n\n";
-                let hasWinners = false;
-                const bonuses = [config.bonus_top1 || 50, config.bonus_top2 || 30, config.bonus_top3 || 20];
-                const medals = ["🥇", "🥈", "🥉"];
-                
-                for (let i = 0; i < topUsers.length; i++) {
-                    hasWinners = true;
-                    const u = topUsers[i];
-                    const bonus = bonuses[i];
-                    u.balance += bonus; await u.save();
-                    broadcastTxt += `${medals[i]} *Top ${i+1}:* \`${safeMD(u.first_name)}\` (ID: \`${u.id}\`)\n🎁 *Bonus:* \`${bonus}\` ৳ | *OTPs:* ${u.today_otps}\n\n`;
-                    bot.sendMessage(u.id, `🎉 *CONGRATULATIONS!*\n\n🎁 *Bonus:* \`${bonus}\` ৳ আপনার একাউন্টে যোগ করা হয়েছে!`, { parse_mode: 'Markdown' }).catch(()=>{});
+                if (config.top_reward_on !== false) {
+                    const topUsers = await User.find({ today_otps: { $gte: 50 }, referral_count: { $gte: 3 } }).sort({ today_otps: -1 }).limit(3);
+                    
+                    let broadcastTxt = "🏆 *YESTERDAY'S TOP WINNERS* 🏆\n\n";
+                    let hasWinners = false;
+                    const bonuses = [config.bonus_top1 || 50, config.bonus_top2 || 30, config.bonus_top3 || 20];
+                    const medals = ["🥇", "🥈", "🥉"];
+                    
+                    for (let i = 0; i < topUsers.length; i++) {
+                        hasWinners = true;
+                        const u = topUsers[i];
+                        const bonus = bonuses[i];
+                        u.balance += bonus; await u.save();
+                        broadcastTxt += `${medals[i]} *Top ${i+1}:* \`${safeMD(u.first_name)}\` (ID: \`${u.id}\`)\n🎁 *Bonus:* \`${bonus}\` ৳ | *OTPs:* ${u.today_otps}\n\n`;
+                        bot.sendMessage(u.id, `🎉 *CONGRATULATIONS!*\n\n🎁 *Bonus:* \`${bonus}\` ৳ আপনার একাউন্টে যোগ করা হয়েছে!`, { parse_mode: 'Markdown' }).catch(()=>{});
+                    }
+                    if (hasWinners && config.otp_group) bot.sendMessage(config.otp_group, broadcastTxt, { parse_mode: 'Markdown' }).catch(()=>{});
                 }
                 
-                if (hasWinners && config.otp_group) bot.sendMessage(config.otp_group, broadcastTxt, { parse_mode: 'Markdown' }).catch(()=>{});
                 await User.updateMany({}, { $set: { today_otps: 0, today_balance: 0, last_active_date: todayStr } });
             }
         } catch (e) { }
@@ -627,7 +657,7 @@ bot.onText(/^\/start(?:\s+(.+))?$/, async (msg, match) => {
     if (!(await checkForceSub(chatId))) return;
 
     const safeName = safeMD(msg.from.first_name);
-    const welcomeMsg = ` 💐*WELCOME TO FIRE OTP BOT*\n\n👋 Hello, \`${safeName}\`!\n\n🚀 _Get unlimited virtual numbers and instant OTPs for any platform in seconds._\n\n👇 Please choose an option from the menu below:`;
+    const welcomeMsg = ` 💐*WELCOME TO ̲❚█══VX TEAM══█❚*\n\n👋 Hello, \`${safeName}\`!\n\n🚀 _Get unlimited virtual numbers and instant OTPs for any platform in seconds._\n\n👇 Please choose an option from the menu below:`;
     bot.sendMessage(chatId, welcomeMsg, { parse_mode: 'Markdown', ...getMainMenu(chatId) }).catch(e => console.error("Start Err:", e.message));
 });
 
@@ -786,12 +816,13 @@ bot.on('message', async (msg) => {
             }
             delete adminState[chatId]; return;
         }
+        // Force Sub / Channels Addition
         else if (state.action === 'wait_force_ch_add' && isMainAdmin(chatId)) {
             const ch = text.trim();
             const config = await getAppConfig();
             if (!Array.isArray(config.force_channels)) config.force_channels = [];
             if (!config.force_channels.includes(ch)) { config.force_channels.push(ch); await saveAppConfig(config); }
-            bot.sendMessage(chatId, `✅ *Force Channel/Group added:* \`${safeMD(ch)}\``, { parse_mode: 'Markdown' }).catch(()=>{});
+            bot.sendMessage(chatId, `✅ *Force Channel/Group added:* \`${safeMD(ch)}\`\n_Note: Ensure the bot is an admin in this channel._`, { parse_mode: 'Markdown' }).catch(()=>{});
             delete adminState[chatId]; return;
         }
         else if (state.action === 'wait_set_otp_group' && isMainAdmin(chatId)) {
@@ -884,15 +915,20 @@ bot.on('callback_query', async (query) => {
     const data = query.data;
     const msgId = query.message.message_id;
 
+    // 🟢 Fixed force sub validation and pop-up logic 🟢
     if (data === "check_joined") {
         const subbed = await isUserSubscribed(chatId);
         if (subbed) {
             bot.deleteMessage(chatId, msgId).catch(()=>{});
             const u = await ensureUser(query.from);
-            const welcomeMsg = ` 💐*WELCOME TO FIRE OTP BOT*\n\n👋 Hello, \`${safeMD(u.first_name)}\`!\n\n🚀 _Get unlimited virtual numbers and instant OTPs for any platform in seconds._`;
+            const safeName = safeMD(u.first_name);
+            const welcomeMsg = ` 💐*WELCOME TO ̲❚█══VX TEAM══█❚*\n\n👋 Hello, \`${safeName}\`!\n\n🚀 _Get unlimited virtual numbers and instant OTPs for any platform in seconds._\n\n👇 Please choose an option from the menu below:`;
             bot.sendMessage(chatId, welcomeMsg, { parse_mode: 'Markdown', ...getMainMenu(chatId) }).catch(()=>{});
-        } else { bot.sendMessage(chatId, "⚠️ *আপনি এখনও সবগুলো চ্যানেলে জয়েন করেননি!*", { parse_mode: 'Markdown' }).catch(()=>{}); }
-        bot.answerCallbackQuery(query.id).catch(()=>{}); return;
+            bot.answerCallbackQuery(query.id, { text: "✅ Successfully Joined!" }).catch(()=>{});
+        } else { 
+            bot.answerCallbackQuery(query.id, { text: "⚠️ আপনি এখনও সবগুলো চ্যানেলে জয়েন করেননি! দয়া করে সবগুলোতে জয়েন করে আবার ক্লিক করুন।", show_alert: true }).catch(()=>{}); 
+        }
+        return;
     }
 
     if (data === "my_rank") {
@@ -933,7 +969,7 @@ bot.on('callback_query', async (query) => {
         }
         else if (data === "add_force_ch" && isMainAdmin(chatId)) {
             adminState[chatId] = { action: 'wait_force_ch_add' };
-            bot.sendMessage(chatId, "✏️ Enter Channel username (e.g. @mychannel) or Invite Link:").catch(()=>{});
+            bot.sendMessage(chatId, "✏️ Enter Channel username (e.g. @mychannel) or ID (-100xxxx):").catch(()=>{});
         }
         else if (data.startsWith('del_force_') && isMainAdmin(chatId)) {
             const idx = parseInt(data.split('_')[2]);
@@ -1050,6 +1086,7 @@ bot.on('callback_query', async (query) => {
             let msg = `💳 *Payment & Reward Settings*\n\n💰 *Per OTP Earning:* \`${config.per_otp_rate}\` ৳\n📉 *Min Withdraw:* \`${config.min_withdraw}\` ৳\n👥 *Ref Comm/OTP:* \`${config.ref_otp_commission || 0.05}\` ৳\n🏆 *Top Bonus:* 1st:\`${config.bonus_top1 || 50}\` | 2nd:\`${config.bonus_top2 || 30}\` | 3rd:\`${config.bonus_top3 || 20}\`\n💳 *Methods:* \`${safeMD(config.pay_methods.join(', ') || 'None')}\``;
             let kb = [
                 [{ text: `🎁 Reward System: ${config.reward_system ? "ON 🟢" : "OFF 🔴"}`, callback_data: "adm_tog_reward", style: "danger" }],
+                [{ text: `🏆 Top Reward System: ${config.top_reward_on ? "ON 🟢" : "OFF 🔴"}`, callback_data: "adm_tog_topreward", style: "primary" }],
                 [{ text: "✏️ Edit Earning/OTP", callback_data: "adm_edit_otprate", style: "primary" }, { text: "✏️ Ref Comm/OTP", callback_data: "adm_edit_refcom", style: "primary" }],
                 [{ text: "🥇 Top 1", callback_data: "adm_t1", style: "success" }, { text: "🥈 Top 2", callback_data: "adm_t2", style: "success" }, { text: "🥉 Top 3", callback_data: "adm_t3", style: "success" }],
                 [{ text: "✏️ Edit Min Withdraw", callback_data: "adm_edit_minwd", style: "primary" }],
@@ -1061,6 +1098,11 @@ bot.on('callback_query', async (query) => {
         else if (data === "adm_tog_reward" && isAdmin(chatId)) {
             const config = await getAppConfig();
             config.reward_system = !config.reward_system; await saveAppConfig(config);
+            bot.editMessageText("✅ Changed! Re-open settings.", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "adm_paycfg", style: "primary" }]] } }).catch(()=>{});
+        }
+        else if (data === "adm_tog_topreward" && isAdmin(chatId)) {
+            const config = await getAppConfig();
+            config.top_reward_on = !config.top_reward_on; await saveAppConfig(config);
             bot.editMessageText("✅ Changed! Re-open settings.", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "adm_paycfg", style: "primary" }]] } }).catch(()=>{});
         }
         else if (data === "adm_edit_otprate" && isAdmin(chatId)) {
